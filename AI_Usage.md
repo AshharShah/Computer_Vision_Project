@@ -28,3 +28,5 @@ AI assistance became more essential as the pipeline grew in mathematical and com
 - Used AI for additional clarification on OpenCV functions, their parameters, and expected outputs.
 
 - Overall, AI acted as a technical reference to accelerate learning of complex optimization and geometry concepts.
+
+- After the creation of the Week 3 notebook in the _Submission_Notebooks_ folder, AI was also used in order to breakdown the Week 3 notebook into different .py files for modularity and import them into a seperate notebook named _main.py_.
