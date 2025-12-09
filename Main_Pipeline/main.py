@@ -20,6 +20,49 @@ from sfm_export import (
 output_dir = r"../Tehzeeb_v2/resized_images" 
 min_triangulation_angle = 3.0 # Minimum angle for valid triangulation (in degrees)
 
+def compute_rms_reprojection_error(camera_poses, point_cloud, map_3d_to_kp, features, K):
+    total_error = 0
+    n_obs = 0
+
+    fx, fy = K[0,0], K[1,1]
+    cx, cy = K[0,2], K[1,2]
+
+    for pt_idx, kp_map in enumerate(map_3d_to_kp):
+        X = point_cloud[pt_idx]
+
+        for img_path, kp_idx in kp_map.items():
+            kp = features[img_path][kp_idx]
+            x_obs, y_obs = kp.pt
+
+            R, t = camera_poses[img_path]
+            xc, yc, zc = R @ X + t.ravel()
+
+            u = fx * (xc / zc) + cx
+            v = fy * (yc / zc) + cy
+
+            err = (u - x_obs)**2 + (v - y_obs)**2
+            total_error += err
+            n_obs += 1
+
+    rms = np.sqrt(total_error / n_obs) if n_obs > 0 else 0
+    print(f"RMS Reprojection Error: {rms:.4f} pixels over {n_obs} observations")
+    return rms
+
+def compute_drift(camera_poses):
+    cam_paths = list(camera_poses.keys())
+    positions = np.array([-R.T @ t for R, t in camera_poses.values()])  # camera centers
+    sequential_dist = np.linalg.norm(np.diff(positions, axis=0), axis=1)
+    total_path = sequential_dist.sum() if len(sequential_dist) > 0 else 0
+
+    loop_closure_error = np.linalg.norm(positions[-1] - positions[0]) if len(positions) > 1 else 0
+    loop_closure_percent = 100 * loop_closure_error / total_path if total_path > 0 else 0
+
+    print(f"Total path length: {total_path:.4f}")
+    print(f"Loop closure error: {loop_closure_error:.4f}")
+    print(f"Loop closure drift: {loop_closure_percent:.2f}% of total path")
+    return total_path, loop_closure_error, loop_closure_percent
+
+
 def run_sfm_pipeline():
     # --- Global Data Structures ---
     global features, descriptors, camera_poses, point_cloud, map_3d_to_keypoint_indices
@@ -218,6 +261,12 @@ def run_sfm_pipeline():
             print("Finished Global Bundle Adjustment.\n")
 
     print(f"\n*** Incremental SfM Complete. Final Point Cloud Size: {len(point_cloud)} ***")
+
+
+    # Final Metrics
+    print("\n--- Final Reconstruction Metrics ---")
+    rms_error = compute_rms_reprojection_error(camera_poses, point_cloud, map_3d_to_keypoint_indices, features, K)
+    total_path, loop_error, loop_percent = compute_drift(camera_poses)
     
     # Export To JSON for visualization
     export_sfm_to_json(

@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+
+    <!-- Define The Title For The Viewer -->
+    <title>Photosynth Viewer - CS346 Project</title>
+
+    <style>
+    body { margin: 0; overflow: hidden; background: #000; }
+    canvas { display: block; }
+    </style>
+
+    <!-- Define The Import Map For Three.JS -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+</head>
+
+<body>
+
+    <!-- Create The Canvas -->
+    <canvas id="viewer"></canvas>
+
+    <script type="module">
+    console.log("App Initialization: Starting script execution.");
+    
+    // Import ThreeJs Modules From Import Map
+    import * as THREE from "three";
+    import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+    // Define The Global Variables
+    let renderer, scene, camera, controls;
+    let camerasJSON = {};
+    let pointsJSON = [];
+    let currentImageMesh = null;
+    let animationRunning = false;
+
+    // Scene Setup and Rendering
+    function init() {
+        const canvas = document.getElementById("viewer");
+        // Setup Render To Draw The 3D Scene Onto The Canvas
+        renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+        // Define The Window Size
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        // Create The Scene (container for all objects, lights, and cameras)
+        scene = new THREE.Scene();
+        // Create The Camera (defining the viewport)
+        camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.01, 10000);
+        // Initialize The Camera Controls (interactive camera manipulation)
+        controls = new OrbitControls(camera, renderer.domElement);
+
+        window.addEventListener("resize", onWindowResize);
+        window.addEventListener("keydown", onKeyDown);
+
+        // Main Render Loop
+        animate();
+    }
+
+    // Function To Handle Window Resize
+    function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    // Function To Render The Scene
+    function animate() {
+        requestAnimationFrame(animate);
+        renderer.render(scene, camera);
+    }
+
+    // Function To Load Data (load external JSON files to define the 3D world)
+    async function loadJSON() {
+        const [cams, pts] = await Promise.all([
+            // Contain The Camera Positions
+            fetch("cameras.json").then(r => r.json()),
+            // Contain The 3D Point Cloud Coordinates
+            fetch("points.json").then(r => r.json())
+        ]);
+        camerasJSON = cams.cameras;
+        pointsJSON = pts.points;
+        setupScene();
+    }
+
+    // Function To Converts The Rotation & Translation Matrix Of Camera, Into tThe Camera's World Position and Quaternion
+    function computeCameraWorldPose(camObj) {
+        const R = new THREE.Matrix4();
+        // Create The Homogenous Rotation Matrix
+        R.set(
+            camObj.R[0][0], camObj.R[0][1], camObj.R[0][2], 0,
+            camObj.R[1][0], camObj.R[1][1], camObj.R[1][2], 0,
+            camObj.R[2][0], camObj.R[2][1], camObj.R[2][2], 0,
+            0, 0, 0, 1
+        );
+        // Create The Translation Vector
+        const t = new THREE.Vector3(camObj.t[0], camObj.t[1], camObj.t[2]);
+        // Transpose The Rotation Matrix
+        const R_inv = new THREE.Matrix4().copy(R).transpose();
+        // Apply Inverse To The Transposed Rotation Matrix & Calculate The World Position W=−R^T * t
+        const worldPos = t.clone().applyMatrix4(R_inv).multiplyScalar(-1);
+        // Calculate The World Quaternion (From Rotation Matrix)
+        const worldQuat = new THREE.Quaternion().setFromRotationMatrix(R_inv);
+        return { position: worldPos, quaternion: worldQuat };
+    }
+
+    // Take The Raw 3D Point Data & Convert It Into A Displayable Point Cloud object within the Three.js 3D scene
+    function addPointCloud() {
+        // Create The Geometry Object
+        const geometry = new THREE.BufferGeometry();
+        // Initialize The Containers
+        const positions = [];
+        const colors = [];
+
+        // For Each Point, Fetch Its Position & Point Color
+        pointsJSON.forEach(p => {
+            positions.push(...p.xyz);
+            colors.push(p.color[0]/255, p.color[1]/255, p.color[2]/255);
+        });
+
+        // Assign The Prepared Data Arrays Into The Geometry
+        geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+        geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+        
+        // Create Material (Define How The 3D Points Will Look)
+        const material = new THREE.PointsMaterial({ size: 0.10, vertexColors: true });
+        // Combine The Geometry & Material To Create The THREE.Points Object
+        scene.add(new THREE.Points(geometry, material));
+    }
+
+    // Construct The 3D Object (a mesh) That Will Display The Image
+    async function createCameraImagePlane(imgName) {
+        // Asynchronously Load The Image File, Associated With The Camera
+        const tex = new THREE.TextureLoader().load("images/" + imgName);
+        // Create A Simple 2D Plane On Which The Image Will Be Projected
+        const geo = new THREE.PlaneGeometry(3, 2);
+        // Create The Matercial
+        const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 1 });
+        // Create & Return The THREE.Mesh Object
+        return new THREE.Mesh(geo, mat);
+    }
+
+    // Take The Created Mesh & Position It In The 3D World Relative To The Original Camera's Pose
+    function placeImagePlaneAtCamera(mesh, camPose) {
+        mesh.position.copy(camPose.position);
+        mesh.quaternion.copy(camPose.quaternion);
+        mesh.position.add(new THREE.Vector3(0,0,-2).applyQuaternion(camPose.quaternion));
+    }
+
+    // Prepare The 3D Scene After The JSON Files Have Been Loaded
+    async function setupScene() {
+        // Load The 3D Point Cloud Data Into The Scene
+        addPointCloud();
+        // Fetch The First Camera In The List Of Cameras (Reference Cam)
+        const firstImage = Object.keys(camerasJSON)[0];
+        const camPose = computeCameraWorldPose(camerasJSON[firstImage]);
+        camera.position.copy(camPose.position);
+        camera.quaternion.copy(camPose.quaternion);
+        // Display The Current Camera
+        currentImageMesh = await createCameraImagePlane(firstImage);
+        placeImagePlaneAtCamera(currentImageMesh, camPose);
+        scene.add(currentImageMesh);
+    }
+
+    // Define The Directions Relative To The Arrow Keys To Move The Navigation Viewer
+    const keyDirs = {
+        ArrowUp:    new THREE.Vector3(0,0,-1),
+        ArrowDown:  new THREE.Vector3(0,0, 1),
+        ArrowLeft:  new THREE.Vector3(-1,0,0),
+        ArrowRight: new THREE.Vector3(1,0,0)
+    };
+
+    
+    function getNextCamera(direction) {
+        const currentPos = camera.position.clone();
+        let best = null;
+        let bestDist = Infinity;
+
+        for (const [img, cam] of Object.entries(camerasJSON)) {
+            const pose = computeCameraWorldPose(cam);
+            const delta = pose.position.clone().sub(currentPos);
+            const dot = delta.clone().normalize().dot(direction);
+            if (dot < 0.4) continue;
+
+            const dist = delta.length();
+            if (dist < bestDist) {
+                bestDist = dist;
+                best = { img, pose };
+            }
+        }
+
+        // fallback to closest
+        if (!best) {
+            for (const [img, cam] of Object.entries(camerasJSON)) {
+                const pose = computeCameraWorldPose(cam);
+                const dist = pose.position.distanceTo(currentPos);
+                if (!best || dist < bestDist) {
+                    bestDist = dist;
+                    best = { img, pose };
+                }
+            }
+        }
+        return best;
+    }
+
+    async function transitionToCamera(imgName) {
+        if (animationRunning) return;
+        animationRunning = true;
+
+        const camPose = computeCameraWorldPose(camerasJSON[imgName]);
+        const nextMesh = await createCameraImagePlane(imgName);
+        placeImagePlaneAtCamera(nextMesh, camPose);
+        nextMesh.material.opacity = 0;
+        scene.add(nextMesh);
+
+        const startPos = camera.position.clone();
+        const startQuat = camera.quaternion.clone();
+        const startImgPos = currentImageMesh.position.clone();
+        const startImgQuat = currentImageMesh.quaternion.clone();
+        const endImgPos = camPose.position.clone().add(new THREE.Vector3(0,0,-2).applyQuaternion(camPose.quaternion));
+
+        let t = 0;
+        function animateMove() {
+            t += 0.02;
+            const k = Math.min(t, 1);
+            const smooth = k*k*(3-2*k);
+
+            camera.position.lerpVectors(startPos, camPose.position, smooth);
+            camera.quaternion.slerpQuaternions(startQuat, camPose.quaternion, smooth);
+            // THREE.Quaternion.slerp(startQuat, camPose.quaternion, camera.quaternion, smooth);
+
+            nextMesh.material.opacity = smooth;
+            if (currentImageMesh) currentImageMesh.material.opacity = 1 - smooth;
+
+            nextMesh.position.lerpVectors(startImgPos, endImgPos, smooth);
+            // THREE.Quaternion.slerp(startImgQuat, camPose.quaternion, nextMesh.quaternion, smooth);
+            nextMesh.quaternion.slerpQuaternions(startImgQuat, camPose.quaternion, smooth);
+
+            if (k < 1) requestAnimationFrame(animateMove);
+            else {
+                scene.remove(currentImageMesh);
+                currentImageMesh = nextMesh;
+                animationRunning = false;
+            }
+        }
+        animateMove();
+    }
+
+    function onKeyDown(e) {
+        if (!keyDirs[e.key] || animationRunning) return;
+
+        const worldDir = keyDirs[e.key].clone().applyQuaternion(camera.quaternion).normalize();
+        const nextCam = getNextCamera(worldDir);
+        if (nextCam) transitionToCamera(nextCam.img);
+    }
+
+    //--------------------------------------------------------
+    init();
+    loadJSON();
+    </script>
+</body>
+
+</html>
