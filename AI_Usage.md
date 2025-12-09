@@ -30,3 +30,9 @@ AI assistance became more essential as the pipeline grew in mathematical and com
 - Overall, AI acted as a technical reference to accelerate learning of complex optimization and geometry concepts.
 
 - After the creation of the Week 3 notebook in the _Submission_Notebooks_ folder, AI was also used in order to breakdown the Week 3 notebook into different .py files for modularity and import them into a seperate notebook named _main.py_.
+
+## Week 4 / Tour Application
+
+- AI was utilized to explore and understand the functionality of Three.js features such as lerp and slerp, including their behavior, purpose, and practical implementation for smooth interpolation of positions and rotations in 3D space.
+
+- Additionally, AI assisted in understanding core Three.js objects and concepts, such as meshes, camera quaternions, and scene construction, which were crucial for developing the interactive tour application.
