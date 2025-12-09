@@ -96,3 +96,28 @@ File Description
 `cameras.json` All recovered camera intrinsics & poses
 `points.json` Reconstructed 3D point cloud
 `view_graph.json` View graph showing camera connections
+
+These files can then be copied into the Tour folder where the view.html file is placed to render the point cloud and provide a 3D tour.
+
+## Running the Viewer Application
+
+To open the interactive viewer:
+
+1. Navigate to the `Tour` folder, then into the `public` folder:
+
+```bash
+cd Tour
+cd public
+```
+
+2. Start a simple HTTP server using Python:
+
+```bash
+python -m http.server 5000
+```
+
+3. Open your browser and go to:
+
+   http://localhost:5000
+
+4. Click on view.html to launch the viewer application.
