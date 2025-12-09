@@ -36,3 +36,7 @@ AI assistance became more essential as the pipeline grew in mathematical and com
 - AI was utilized to explore and understand the functionality of Three.js features such as lerp and slerp, including their behavior, purpose, and practical implementation for smooth interpolation of positions and rotations in 3D space.
 
 - Additionally, AI assisted in understanding core Three.js objects and concepts, such as meshes, camera quaternions, and scene construction, which were crucial for developing the interactive tour application.
+
+- AI was also employed to develop functions for evaluating the 3D reconstruction pipeline, including:
+  - RMS reprojection error computation: measuring the discrepancy between projected 3D points and their corresponding 2D keypoints in images.
+  - Drift error computation: analyzing the deviation of sequential camera poses to quantify loop closure errors and overall path consistency.
